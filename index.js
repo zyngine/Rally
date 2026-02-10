@@ -126,6 +126,7 @@ client.on('interactionCreate', async (interaction) => {
         const description = interaction.options.getString('description');
         const location = interaction.options.getString('location');
         const maxAttendees = interaction.options.getInteger('max-attendees');
+        const utcOffset = interaction.options.getNumber('utc-offset') ?? -5;
 
         // Parse date parts manually for reliability
         const dateMatch = dateStr.match(/^(\d{4})-(\d{2})-(\d{2})$/);
@@ -137,7 +138,8 @@ client.on('interactionCreate', async (interaction) => {
 
         const [, year, month, day] = dateMatch;
         const [, hour, minute] = timeMatch;
-        const eventTime = new Date(Number(year), Number(month) - 1, Number(day), Number(hour), Number(minute));
+        // Build time in UTC by subtracting the user's offset
+        const eventTime = new Date(Date.UTC(Number(year), Number(month) - 1, Number(day), Number(hour) - utcOffset, Number(minute)));
 
         if (isNaN(eventTime.getTime())) {
           return interaction.reply({ content: 'Invalid date/time. Use `YYYY-MM-DD` for date and `HH:MM` for time.', ephemeral: true });
