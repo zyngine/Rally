@@ -129,7 +129,8 @@ client.on('interactionCreate', async (interaction) => {
         const location = interaction.options.getString('location');
         const maxAttendees = interaction.options.getInteger('max-attendees');
         const utcOffset = interaction.options.getNumber('utc-offset') ?? -5;
-        const imageUrl = interaction.options.getString('image');
+        const imageAttachment = interaction.options.getAttachment('image');
+        const imageUrl = imageAttachment ? imageAttachment.url : interaction.options.getString('image-url');
 
         // Parse date parts manually for reliability
         const dateMatch = dateStr.match(/^(\d{4})-(\d{2})-(\d{2})$/);
