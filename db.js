@@ -20,9 +20,11 @@ async function initDb() {
       max_attendees INTEGER,
       reminder_sent BOOLEAN DEFAULT FALSE,
       cancelled BOOLEAN DEFAULT FALSE,
+      image_url TEXT,
       created_at TIMESTAMPTZ DEFAULT NOW()
     )
   `);
+  await pool.query(`ALTER TABLE events ADD COLUMN IF NOT EXISTS image_url TEXT`).catch(() => {});
   await pool.query(`
     CREATE TABLE IF NOT EXISTS rsvps (
       event_id INTEGER REFERENCES events(id) ON DELETE CASCADE,
@@ -34,11 +36,11 @@ async function initDb() {
   console.log('Database tables ready.');
 }
 
-async function createEvent({ guildId, channelId, creatorId, title, description, eventTime, location, maxAttendees }) {
+async function createEvent({ guildId, channelId, creatorId, title, description, eventTime, location, maxAttendees, imageUrl }) {
   const res = await pool.query(
-    `INSERT INTO events (guild_id, channel_id, creator_id, title, description, event_time, location, max_attendees)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING id`,
-    [guildId, channelId, creatorId, title, description, eventTime, location, maxAttendees]
+    `INSERT INTO events (guild_id, channel_id, creator_id, title, description, event_time, location, max_attendees, image_url)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) RETURNING id`,
+    [guildId, channelId, creatorId, title, description, eventTime, location, maxAttendees, imageUrl]
   );
   return res.rows[0].id;
 }

@@ -47,6 +47,8 @@ function buildEventEmbed(event, rsvps) {
     embed.setColor(0x95A5A6);
   }
 
+  if (event.image_url) embed.setImage(event.image_url);
+
   embed.setFooter({ text: `Event #${event.id}` });
 
   return embed;
@@ -127,6 +129,7 @@ client.on('interactionCreate', async (interaction) => {
         const location = interaction.options.getString('location');
         const maxAttendees = interaction.options.getInteger('max-attendees');
         const utcOffset = interaction.options.getNumber('utc-offset') ?? -5;
+        const imageUrl = interaction.options.getString('image');
 
         // Parse date parts manually for reliability
         const dateMatch = dateStr.match(/^(\d{4})-(\d{2})-(\d{2})$/);
@@ -157,7 +160,8 @@ client.on('interactionCreate', async (interaction) => {
           description,
           eventTime,
           location,
-          maxAttendees
+          maxAttendees,
+          imageUrl
         });
 
         const event = await db.getEvent(eventId);

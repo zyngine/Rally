@@ -15,6 +15,7 @@ const commands = [
         .addStringOption(opt => opt.setName('location').setDescription('Event location or link'))
         .addIntegerOption(opt => opt.setName('max-attendees').setDescription('Max number of attendees').setMinValue(1))
         .addNumberOption(opt => opt.setName('utc-offset').setDescription('Your UTC offset (e.g. -5 for EST, -6 for CST, -8 for PST). Default: -5'))
+        .addStringOption(opt => opt.setName('image').setDescription('Image URL for the event'))
     )
     .addSubcommand(sub =>
       sub.setName('list')
