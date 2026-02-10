@@ -299,4 +299,9 @@ client.on('interactionCreate', async (interaction) => {
   }
 });
 
-client.login(process.env.DISCORD_TOKEN);
+console.log(`DISCORD_TOKEN set: ${!!process.env.DISCORD_TOKEN}`);
+console.log(`DATABASE_URL set: ${!!process.env.DATABASE_URL}`);
+
+client.login(process.env.DISCORD_TOKEN).catch(err => {
+  console.error('Login failed:', err);
+});
