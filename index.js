@@ -101,173 +101,191 @@ client.on('interactionCreate', async (interaction) => {
 
   const guildId = interaction.guild.id;
 
-  // ---------- Slash Commands ----------
-  if (interaction.isChatInputCommand()) {
-    const { commandName } = interaction;
+  try {
+    // ---------- Slash Commands ----------
+    if (interaction.isChatInputCommand()) {
+      const { commandName } = interaction;
 
-    if (commandName !== 'event') return;
+      if (commandName !== 'event') return;
 
-    const sub = interaction.options.getSubcommand();
+      const sub = interaction.options.getSubcommand();
 
-    // --- /event create ---
-    if (sub === 'create') {
-      const title = interaction.options.getString('title');
-      const dateStr = interaction.options.getString('date');
-      const timeStr = interaction.options.getString('time');
-      const description = interaction.options.getString('description');
-      const location = interaction.options.getString('location');
-      const maxAttendees = interaction.options.getInteger('max-attendees');
+      // --- /event create ---
+      if (sub === 'create') {
+        const title = interaction.options.getString('title');
+        const dateStr = interaction.options.getString('date');
+        const timeStr = interaction.options.getString('time');
+        const description = interaction.options.getString('description');
+        const location = interaction.options.getString('location');
+        const maxAttendees = interaction.options.getInteger('max-attendees');
 
-      const eventTime = new Date(`${dateStr}T${timeStr}`);
-      if (isNaN(eventTime.getTime())) {
-        return interaction.reply({ content: 'Invalid date/time format. Use `YYYY-MM-DD` for date and `HH:MM` for time.', ephemeral: true });
-      }
+        // Parse date parts manually for reliability
+        const dateMatch = dateStr.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+        const timeMatch = timeStr.match(/^(\d{1,2}):(\d{2})$/);
 
-      if (eventTime <= new Date()) {
-        return interaction.reply({ content: 'Event time must be in the future.', ephemeral: true });
-      }
-
-      const eventId = await db.createEvent({
-        guildId,
-        channelId: interaction.channel.id,
-        creatorId: interaction.user.id,
-        title,
-        description,
-        eventTime,
-        location,
-        maxAttendees
-      });
-
-      const event = await db.getEvent(eventId);
-      const embed = buildEventEmbed(event, []);
-      const buttons = buildEventButtons(eventId, false);
-
-      const reply = await interaction.reply({ embeds: [embed], components: buttons, fetchReply: true });
-      await db.setEventMessageId(eventId, reply.id);
-    }
-
-    // --- /event list ---
-    if (sub === 'list') {
-      const events = await db.getUpcomingEvents(guildId);
-
-      if (events.length === 0) {
-        return interaction.reply({ content: 'No upcoming events.', ephemeral: true });
-      }
-
-      const list = events.map(e => {
-        const timeUnix = Math.floor(new Date(e.event_time).getTime() / 1000);
-        return `**#${e.id} — ${e.title}**\n<t:${timeUnix}:F> (<t:${timeUnix}:R>)${e.location ? `\nLocation: ${e.location}` : ''}`;
-      }).join('\n\n');
-
-      const embed = new EmbedBuilder()
-        .setTitle('Upcoming Events')
-        .setColor(0x3498DB)
-        .setDescription(list.length > 4096 ? list.slice(0, 4092) + '...' : list);
-
-      return interaction.reply({ embeds: [embed], ephemeral: true });
-    }
-
-    // --- /event cancel ---
-    if (sub === 'cancel') {
-      const eventId = interaction.options.getInteger('id');
-      const event = await db.getEvent(eventId);
-
-      if (!event || event.guild_id !== guildId) {
-        return interaction.reply({ content: 'Event not found.', ephemeral: true });
-      }
-
-      const isCreator = event.creator_id === interaction.user.id;
-      const isAdmin = interaction.member.permissions.has(PermissionFlagsBits.ManageEvents);
-
-      if (!isCreator && !isAdmin) {
-        return interaction.reply({ content: 'Only the event creator or someone with **Manage Events** permission can cancel.', ephemeral: true });
-      }
-
-      if (event.cancelled) {
-        return interaction.reply({ content: 'This event is already cancelled.', ephemeral: true });
-      }
-
-      await db.cancelEvent(eventId);
-
-      // Notify attendees
-      const rsvps = await db.getRsvps(eventId);
-      for (const rsvp of rsvps) {
-        const user = await client.users.fetch(rsvp.user_id).catch(() => null);
-        if (user) {
-          await user.send(`**${event.title}** has been **cancelled**.`).catch(() => {});
+        if (!dateMatch || !timeMatch) {
+          return interaction.reply({ content: 'Invalid format. Use `YYYY-MM-DD` for date and `HH:MM` for time.', ephemeral: true });
         }
+
+        const [, year, month, day] = dateMatch;
+        const [, hour, minute] = timeMatch;
+        const eventTime = new Date(Number(year), Number(month) - 1, Number(day), Number(hour), Number(minute));
+
+        if (isNaN(eventTime.getTime())) {
+          return interaction.reply({ content: 'Invalid date/time. Use `YYYY-MM-DD` for date and `HH:MM` for time.', ephemeral: true });
+        }
+
+        if (eventTime <= new Date()) {
+          return interaction.reply({ content: 'Event time must be in the future.', ephemeral: true });
+        }
+
+        const eventId = await db.createEvent({
+          guildId,
+          channelId: interaction.channel.id,
+          creatorId: interaction.user.id,
+          title,
+          description,
+          eventTime,
+          location,
+          maxAttendees
+        });
+
+        const event = await db.getEvent(eventId);
+        const embed = buildEventEmbed(event, []);
+        const buttons = buildEventButtons(eventId, false);
+
+        const reply = await interaction.reply({ embeds: [embed], components: buttons, fetchReply: true });
+        await db.setEventMessageId(eventId, reply.id);
       }
 
-      // Update the original message if possible
-      if (event.message_id) {
-        const channel = interaction.guild.channels.cache.get(event.channel_id);
-        if (channel) {
-          const msg = await channel.messages.fetch(event.message_id).catch(() => null);
-          if (msg) {
-            const updatedEvent = await db.getEvent(eventId);
-            const embed = buildEventEmbed(updatedEvent, rsvps);
-            await msg.edit({ embeds: [embed], components: [] }).catch(() => {});
+      // --- /event list ---
+      if (sub === 'list') {
+        const events = await db.getUpcomingEvents(guildId);
+
+        if (events.length === 0) {
+          return interaction.reply({ content: 'No upcoming events.', ephemeral: true });
+        }
+
+        const list = events.map(e => {
+          const timeUnix = Math.floor(new Date(e.event_time).getTime() / 1000);
+          return `**#${e.id} — ${e.title}**\n<t:${timeUnix}:F> (<t:${timeUnix}:R>)${e.location ? `\nLocation: ${e.location}` : ''}`;
+        }).join('\n\n');
+
+        const embed = new EmbedBuilder()
+          .setTitle('Upcoming Events')
+          .setColor(0x3498DB)
+          .setDescription(list.length > 4096 ? list.slice(0, 4092) + '...' : list);
+
+        return interaction.reply({ embeds: [embed], ephemeral: true });
+      }
+
+      // --- /event cancel ---
+      if (sub === 'cancel') {
+        const eventId = interaction.options.getInteger('id');
+        const event = await db.getEvent(eventId);
+
+        if (!event || event.guild_id !== guildId) {
+          return interaction.reply({ content: 'Event not found.', ephemeral: true });
+        }
+
+        const isCreator = event.creator_id === interaction.user.id;
+        const isAdmin = interaction.member.permissions.has(PermissionFlagsBits.ManageEvents);
+
+        if (!isCreator && !isAdmin) {
+          return interaction.reply({ content: 'Only the event creator or someone with **Manage Events** permission can cancel.', ephemeral: true });
+        }
+
+        if (event.cancelled) {
+          return interaction.reply({ content: 'This event is already cancelled.', ephemeral: true });
+        }
+
+        await db.cancelEvent(eventId);
+
+        // Notify attendees
+        const rsvps = await db.getRsvps(eventId);
+        for (const rsvp of rsvps) {
+          const user = await client.users.fetch(rsvp.user_id).catch(() => null);
+          if (user) {
+            await user.send(`**${event.title}** has been **cancelled**.`).catch(() => {});
           }
         }
+
+        // Update the original message if possible
+        if (event.message_id) {
+          const channel = interaction.guild.channels.cache.get(event.channel_id);
+          if (channel) {
+            const msg = await channel.messages.fetch(event.message_id).catch(() => null);
+            if (msg) {
+              const updatedEvent = await db.getEvent(eventId);
+              const embed = buildEventEmbed(updatedEvent, rsvps);
+              await msg.edit({ embeds: [embed], components: [] }).catch(() => {});
+            }
+          }
+        }
+
+        return interaction.reply({ content: `**${event.title}** has been cancelled. Attendees have been notified.`, ephemeral: true });
       }
 
-      return interaction.reply({ content: `**${event.title}** has been cancelled. Attendees have been notified.`, ephemeral: true });
+      // --- /event info ---
+      if (sub === 'info') {
+        const eventId = interaction.options.getInteger('id');
+        const event = await db.getEvent(eventId);
+
+        if (!event || event.guild_id !== guildId) {
+          return interaction.reply({ content: 'Event not found.', ephemeral: true });
+        }
+
+        const rsvps = await db.getRsvps(eventId);
+        const embed = buildEventEmbed(event, rsvps);
+
+        return interaction.reply({ embeds: [embed], ephemeral: true });
+      }
     }
 
-    // --- /event info ---
-    if (sub === 'info') {
-      const eventId = interaction.options.getInteger('id');
-      const event = await db.getEvent(eventId);
+    // ---------- Button Interactions (RSVP) ----------
+    if (interaction.isButton()) {
+      const parts = interaction.customId.split('_');
+      if (parts[0] !== 'rsvp') return;
 
-      if (!event || event.guild_id !== guildId) {
-        return interaction.reply({ content: 'Event not found.', ephemeral: true });
+      const action = parts[1];
+      const eventId = parseInt(parts[2]);
+
+      const event = await db.getEvent(eventId);
+      if (!event || event.cancelled) {
+        return interaction.reply({ content: 'This event is no longer active.', ephemeral: true });
       }
 
+      if (action === 'cancel') {
+        await db.removeRsvp(eventId, interaction.user.id);
+        await interaction.reply({ content: `You've removed your RSVP for **${event.title}**.`, ephemeral: true });
+      } else {
+        // Check max attendees for "going"
+        if (action === 'going' && event.max_attendees) {
+          const count = await db.getRsvpCount(eventId);
+          const rsvps = await db.getRsvps(eventId);
+          const existing = rsvps.find(r => r.user_id === interaction.user.id);
+          const alreadyGoing = existing && existing.status === 'going';
+
+          if (!alreadyGoing && count >= event.max_attendees) {
+            return interaction.reply({ content: `**${event.title}** is full (${event.max_attendees} spots).`, ephemeral: true });
+          }
+        }
+
+        await db.addRsvp(eventId, interaction.user.id, action);
+        const label = action === 'going' ? 'going to' : 'interested in';
+        await interaction.reply({ content: `You're ${label} **${event.title}**!`, ephemeral: true });
+      }
+
+      // Update the event embed
       const rsvps = await db.getRsvps(eventId);
       const embed = buildEventEmbed(event, rsvps);
-
-      return interaction.reply({ embeds: [embed], ephemeral: true });
+      await interaction.message.edit({ embeds: [embed], components: buildEventButtons(eventId, event.cancelled) }).catch(() => {});
     }
-  }
-
-  // ---------- Button Interactions (RSVP) ----------
-  if (interaction.isButton()) {
-    const parts = interaction.customId.split('_');
-    if (parts[0] !== 'rsvp') return;
-
-    const action = parts[1];
-    const eventId = parseInt(parts[2]);
-
-    const event = await db.getEvent(eventId);
-    if (!event || event.cancelled) {
-      return interaction.reply({ content: 'This event is no longer active.', ephemeral: true });
+  } catch (err) {
+    console.error('Interaction error:', err);
+    if (!interaction.replied && !interaction.deferred) {
+      await interaction.reply({ content: 'Something went wrong. Please try again.', ephemeral: true }).catch(() => {});
     }
-
-    if (action === 'cancel') {
-      await db.removeRsvp(eventId, interaction.user.id);
-      await interaction.reply({ content: `You've removed your RSVP for **${event.title}**.`, ephemeral: true });
-    } else {
-      // Check max attendees for "going"
-      if (action === 'going' && event.max_attendees) {
-        const count = await db.getRsvpCount(eventId);
-        const rsvps = await db.getRsvps(eventId);
-        const existing = rsvps.find(r => r.user_id === interaction.user.id);
-        const alreadyGoing = existing && existing.status === 'going';
-
-        if (!alreadyGoing && count >= event.max_attendees) {
-          return interaction.reply({ content: `**${event.title}** is full (${event.max_attendees} spots).`, ephemeral: true });
-        }
-      }
-
-      await db.addRsvp(eventId, interaction.user.id, action);
-      const label = action === 'going' ? 'going to' : 'interested in';
-      await interaction.reply({ content: `You're ${label} **${event.title}**!`, ephemeral: true });
-    }
-
-    // Update the event embed
-    const rsvps = await db.getRsvps(eventId);
-    const embed = buildEventEmbed(event, rsvps);
-    await interaction.message.edit({ embeds: [embed], components: buildEventButtons(eventId, event.cancelled) }).catch(() => {});
   }
 });
 
