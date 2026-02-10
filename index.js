@@ -1,6 +1,14 @@
 const { Client, GatewayIntentBits, EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, PermissionFlagsBits } = require('discord.js');
+const http = require('http');
 const db = require('./db');
 require('dotenv').config();
+
+// Simple health server so Railway doesn't kill the container
+const port = process.env.PORT || 3000;
+http.createServer((req, res) => {
+  res.writeHead(200);
+  res.end('Rally is running');
+}).listen(port, () => console.log(`Health server on port ${port}`));
 
 const client = new Client({
   intents: [GatewayIntentBits.Guilds]
